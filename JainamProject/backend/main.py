@@ -8,21 +8,17 @@ import json
 
 app = FastAPI()
 
-# --- CONFIGURATION ---
 BLOCKCHAIN_URL = "http://127.0.0.1:7545"
 web3 = Web3(Web3.HTTPProvider(BLOCKCHAIN_URL))
 
-# IMPORTANT: Update these!
 SENDER_ADDRESS = "0xYourWalletAddressHere" 
 PRIVATE_KEY = "YourPrivateKeyHere" 
 CONTRACT_ADDRESS = "0xYourDeployedContractAddressHere"
 
-# Paste your ABI from Remix here
 CONTRACT_ABI = '[{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"dataHash","type":"bytes32"},{"indexed":false,"internalType":"bool","name":"isFraud","type":"bool"},{"indexed":false,"internalType":"uint256","name":"timestamp","type":"uint256"}],"name":"NewRecordAdded","type":"event"},{"inputs":[{"internalType":"bytes32","name":"_dataHash","type":"bytes32"},{"internalType":"bool","name":"_isFraud","type":"bool"},{"internalType":"string","name":"_modelVersion","type":"string"}],"name":"addRecord","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"_dataHash","type":"bytes32"}],"name":"getRecord","outputs":[{"internalType":"bool","name":"","type":"bool"},{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
 
 contract = web3.eth.contract(address=CONTRACT_ADDRESS, abi=json.loads(CONTRACT_ABI))
 
-# Load Models
 try:
     model = joblib.load('fraud_model.pkl')
     scaler = joblib.load('scaler.pkl')
@@ -30,7 +26,6 @@ try:
 except FileNotFoundError:
     print("Error: Models not found. Run train_model.py first.")
 
-# SAFER INPUT: Forces user to provide specific fields
 class TransactionData(BaseModel):
     value: float
     block_height: int
@@ -43,23 +38,19 @@ def home():
 @app.post("/detect_fraud")
 def detect_fraud(data: TransactionData):
     try:
-        # 1. Prepare Data (Strict Order: Value, BlockHeight, TimeStamp)
         features = [data.value, data.block_height, data.timestamp]
         
         input_data = np.array(features).reshape(1, -1)
         input_imputed = imputer.transform(input_data)
         input_scaled = scaler.transform(input_imputed)
 
-        # 2. Predict
         prediction = model.predict(input_scaled)[0]
         is_fraud = bool(prediction)
 
-        # 3. Hash Data
         data_string = str(features)
         data_hash = hashlib.sha256(data_string.encode()).hexdigest()
         data_hash_bytes = "0x" + data_hash
 
-        # 4. Blockchain Write
         nonce = web3.eth.get_transaction_count(SENDER_ADDRESS)
         txn = contract.functions.addRecord(
             data_hash_bytes,
